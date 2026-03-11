@@ -398,9 +398,8 @@ export async function runDirectAgent(
         errorMessage,
         errorStack,
         errorType: err?.constructor?.name || typeof err,
-        errorDetails: err instanceof Error
-          ? { name: err.name, message: err.message }
-          : err,
+        errorDetails:
+          err instanceof Error ? { name: err.name, message: err.message } : err,
       },
       'Direct agent query failed',
     );
