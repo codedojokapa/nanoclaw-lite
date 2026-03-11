@@ -37,6 +37,11 @@ export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
 
+// Use container isolation (true) or run agent directly in main process (false)
+// Direct mode is for development only - no sandbox isolation
+export const USE_CONTAINERS =
+  (process.env.USE_CONTAINERS || 'true') === 'true';
+
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
 export const CONTAINER_TIMEOUT = parseInt(

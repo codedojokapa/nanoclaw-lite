@@ -8,6 +8,7 @@ import {
   POLL_INTERVAL,
   TIMEZONE,
   TRIGGER_PATTERN,
+  USE_CONTAINERS,
 } from './config.js';
 import { startCredentialProxy } from './credential-proxy.js';
 import './channels/index.js';
@@ -26,6 +27,10 @@ import {
   ensureContainerRuntimeRunning,
   PROXY_BIND_HOST,
 } from './container-runtime.js';
+import {
+  runDirectAgent,
+  writeTasksSnapshot as writeDirectTasksSnapshot,
+} from './direct-agent.js';
 import {
   getAllChats,
   getAllRegisteredGroups,
@@ -269,30 +274,36 @@ async function runAgent(
   const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
 
-  // Update tasks snapshot for container to read (filtered by group)
+  // Update tasks snapshot for agent to read (filtered by group)
   const tasks = getAllTasks();
-  writeTasksSnapshot(
-    group.folder,
-    isMain,
-    tasks.map((t) => ({
-      id: t.id,
-      groupFolder: t.group_folder,
-      prompt: t.prompt,
-      schedule_type: t.schedule_type,
-      schedule_value: t.schedule_value,
-      status: t.status,
-      next_run: t.next_run,
-    })),
-  );
+  if (USE_CONTAINERS) {
+    writeTasksSnapshot(
+      group.folder,
+      isMain,
+      tasks.map((t) => ({
+        id: t.id,
+        groupFolder: t.group_folder,
+        prompt: t.prompt,
+        schedule_type: t.schedule_type,
+        schedule_value: t.schedule_value,
+        status: t.status,
+        next_run: t.next_run,
+      })),
+    );
+  } else {
+    writeDirectTasksSnapshot(group.folder, isMain);
+  }
 
   // Update available groups snapshot (main group only can see all groups)
   const availableGroups = getAvailableGroups();
-  writeGroupsSnapshot(
-    group.folder,
-    isMain,
-    availableGroups,
-    new Set(Object.keys(registeredGroups)),
-  );
+  if (USE_CONTAINERS) {
+    writeGroupsSnapshot(
+      group.folder,
+      isMain,
+      availableGroups,
+      new Set(Object.keys(registeredGroups)),
+    );
+  }
 
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput
@@ -306,20 +317,50 @@ async function runAgent(
     : undefined;
 
   try {
-    const output = await runContainerAgent(
-      group,
-      {
-        prompt,
-        sessionId,
-        groupFolder: group.folder,
-        chatJid,
-        isMain,
-        assistantName: ASSISTANT_NAME,
-      },
-      (proc, containerName) =>
-        queue.registerProcess(chatJid, proc, containerName, group.folder),
-      wrappedOnOutput,
-    );
+    let output: ContainerOutput;
+
+    if (USE_CONTAINERS) {
+      // Container mode: spawn a container for the agent
+      output = await runContainerAgent(
+        group,
+        {
+          prompt,
+          sessionId,
+          groupFolder: group.folder,
+          chatJid,
+          isMain,
+          assistantName: ASSISTANT_NAME,
+        },
+        (proc, containerName) =>
+          queue.registerProcess(chatJid, proc, containerName, group.folder),
+        wrappedOnOutput,
+      );
+    } else {
+      // Direct mode: run the agent in the main process
+      output = await runDirectAgent(
+        group,
+        {
+          prompt,
+          sessionId,
+          groupFolder: group.folder,
+          chatJid,
+          isMain,
+          assistantName: ASSISTANT_NAME,
+          sendMessage: async (text, sender) => {
+            const channel = findChannel(channels, chatJid);
+            if (!channel) {
+              logger.warn({ chatJid }, 'No channel owns JID, cannot send message');
+              return;
+            }
+            await channel.sendMessage(chatJid, text);
+          },
+          registerGroup: isMain ? registerGroup : undefined,
+          availableGroups: isMain ? availableGroups : undefined,
+          registeredJids: new Set(Object.keys(registeredGroups)),
+        },
+        wrappedOnOutput,
+      );
+    }
 
     if (output.newSessionId) {
       sessions[group.folder] = output.newSessionId;
@@ -329,7 +370,7 @@ async function runAgent(
     if (output.status === 'error') {
       logger.error(
         { group: group.name, error: output.error },
-        'Container agent error',
+        USE_CONTAINERS ? 'Container agent error' : 'Direct agent error',
       );
       return 'error';
     }
@@ -461,8 +502,12 @@ function recoverPendingMessages(): void {
 }
 
 function ensureContainerSystemRunning(): void {
-  ensureContainerRuntimeRunning();
-  cleanupOrphans();
+  if (USE_CONTAINERS) {
+    ensureContainerRuntimeRunning();
+    cleanupOrphans();
+  } else {
+    logger.info('Running in direct mode - no container runtime needed');
+  }
 }
 
 async function main(): Promise<void> {
