@@ -349,7 +349,10 @@ async function runAgent(
           sendMessage: async (text, sender) => {
             const channel = findChannel(channels, chatJid);
             if (!channel) {
-              logger.warn({ chatJid }, 'No channel owns JID, cannot send message');
+              logger.warn(
+                { chatJid },
+                'No channel owns JID, cannot send message',
+              );
               return;
             }
             await channel.sendMessage(chatJid, text);

@@ -132,7 +132,10 @@ function ensureGroupSessions(groupFolder: string): string {
 /**
  * Get session summary from sessions index
  */
-function getSessionSummary(sessionId: string, sessionsDir: string): string | null {
+function getSessionSummary(
+  sessionId: string,
+  sessionsDir: string,
+): string | null {
   const indexPath = path.join(sessionsDir, 'sessions-index.json');
 
   if (!fs.existsSync(indexPath)) {
@@ -140,8 +143,10 @@ function getSessionSummary(sessionId: string, sessionsDir: string): string | nul
   }
 
   try {
-    const index: SessionsIndex = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
-    const entry = index.entries.find(e => e.sessionId === sessionId);
+    const index: SessionsIndex = JSON.parse(
+      fs.readFileSync(indexPath, 'utf-8'),
+    );
+    const entry = index.entries.find((e) => e.sessionId === sessionId);
     return entry?.summary || null;
   } catch (err) {
     logger.warn(
@@ -163,9 +168,12 @@ function parseTranscript(content: string): ParsedMessage[] {
     try {
       const entry = JSON.parse(line);
       if (entry.type === 'user' && entry.message?.content) {
-        const text = typeof entry.message.content === 'string'
-          ? entry.message.content
-          : entry.message.content.map((c: { text?: string }) => c.text || '').join('');
+        const text =
+          typeof entry.message.content === 'string'
+            ? entry.message.content
+            : entry.message.content
+                .map((c: { text?: string }) => c.text || '')
+                .join('');
         if (text) messages.push({ role: 'user', content: text });
       } else if (entry.type === 'assistant' && entry.message?.content) {
         const textParts = entry.message.content
@@ -204,10 +212,7 @@ function generateFallbackName(): string {
 /**
  * Build SDK options for the query
  */
-function buildSdkOptions(
-  input: DirectInput,
-  sessionsDir: string,
-) {
+function buildSdkOptions(input: DirectInput, sessionsDir: string) {
   // Get global CLAUDE.md for non-main groups
   const globalClaudeMdPath = path.join(GROUPS_DIR, 'global', 'CLAUDE.md');
   let globalClaudeMd: string | undefined;
@@ -235,20 +240,45 @@ function buildSdkOptions(
   // Get credential proxy URL
   const credentialProxyUrl = `http://127.0.0.1:${CREDENTIAL_PROXY_PORT}`;
 
+  // Get paths for the CLI executable
+  const cliPath = path.join(
+    process.cwd(),
+    'node_modules',
+    '@anthropic-ai/claude-agent-sdk',
+    'cli.js',
+  );
+
   return {
     cwd: groupDir,
     additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
     resume: input.sessionId,
+    pathToClaudeCodeExecutable: cliPath,
+    executable: process.execPath as 'node' | 'bun' | 'deno', // Use absolute path to current Node executable
     systemPrompt: globalClaudeMd
-      ? { type: 'preset' as const, preset: 'claude_code' as const, append: globalClaudeMd }
+      ? {
+          type: 'preset' as const,
+          preset: 'claude_code' as const,
+          append: globalClaudeMd,
+        }
       : undefined,
     allowedTools: [
       'Bash',
-      'Read', 'Write', 'Edit', 'Glob', 'Grep',
-      'WebSearch', 'WebFetch',
-      'Task', 'TaskOutput', 'TaskStop',
-      'TeamCreate', 'TeamDelete', 'SendMessage',
-      'TodoWrite', 'ToolSearch', 'Skill',
+      'Read',
+      'Write',
+      'Edit',
+      'Glob',
+      'Grep',
+      'WebSearch',
+      'WebFetch',
+      'Task',
+      'TaskOutput',
+      'TaskStop',
+      'TeamCreate',
+      'TeamDelete',
+      'SendMessage',
+      'TodoWrite',
+      'ToolSearch',
+      'Skill',
       'NotebookEdit',
     ],
     env: {
@@ -300,7 +330,10 @@ export async function runDirectAgent(
       options: sdkOptions,
     })) {
       messageCount++;
-      const msgType = message.type === 'system' ? `system/${(message as { subtype?: string }).subtype}` : message.type;
+      const msgType =
+        message.type === 'system'
+          ? `system/${(message as { subtype?: string }).subtype}`
+          : message.type;
       logger.debug(`[msg #${messageCount}] type=${msgType}`);
 
       if (message.type === 'system' && message.subtype === 'init') {
@@ -308,15 +341,27 @@ export async function runDirectAgent(
         logger.info(`Session initialized: ${newSessionId}`);
       }
 
-      if (message.type === 'system' && (message as { subtype?: string }).subtype === 'task_notification') {
-        const tn = message as { task_id: string; status: string; summary: string };
-        logger.debug(`Task notification: task=${tn.task_id} status=${tn.status} summary=${tn.summary}`);
+      if (
+        message.type === 'system' &&
+        (message as { subtype?: string }).subtype === 'task_notification'
+      ) {
+        const tn = message as {
+          task_id: string;
+          status: string;
+          summary: string;
+        };
+        logger.debug(
+          `Task notification: task=${tn.task_id} status=${tn.status} summary=${tn.summary}`,
+        );
       }
 
       if (message.type === 'result') {
         resultCount++;
-        const textResult = 'result' in message ? (message as { result?: string }).result : null;
-        logger.debug(`Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
+        const textResult =
+          'result' in message ? (message as { result?: string }).result : null;
+        logger.debug(
+          `Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`,
+        );
 
         // Stream the output
         if (onOutput) {
@@ -343,8 +388,20 @@ export async function runDirectAgent(
   } catch (err) {
     const duration = Date.now() - startTime;
     const errorMessage = err instanceof Error ? err.message : String(err);
+    const errorStack = err instanceof Error ? err.stack : undefined;
+
+    // Log error with explicit fields for better serialization
     logger.error(
-      { group: group.name, duration, error: err },
+      {
+        group: group.name,
+        duration,
+        errorMessage,
+        errorStack,
+        errorType: err?.constructor?.name || typeof err,
+        errorDetails: err instanceof Error
+          ? { name: err.name, message: err.message }
+          : err,
+      },
       'Direct agent query failed',
     );
 
@@ -360,10 +417,7 @@ export async function runDirectAgent(
  * Write tasks snapshot for the agent to read
  * This is the same as the container version, but called from the main process
  */
-export function writeTasksSnapshot(
-  groupFolder: string,
-  isMain: boolean,
-): void {
+export function writeTasksSnapshot(groupFolder: string, isMain: boolean): void {
   const tasks = getAllTasks();
 
   // Main sees all tasks, others only see their own

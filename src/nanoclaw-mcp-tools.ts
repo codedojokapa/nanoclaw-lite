@@ -53,7 +53,10 @@ export async function toolSendMessage(
   text: string,
   sender: string | undefined,
   context: ToolContext,
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+): Promise<{
+  content: Array<{ type: string; text: string }>;
+  isError?: boolean;
+}> {
   await context.sendMessage(text, sender);
   return { content: [{ type: 'text', text: 'Message sent.' }] };
 }
@@ -71,14 +74,22 @@ export async function toolScheduleTask(
     target_group_jid?: string;
   },
   context: ToolContext,
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+): Promise<{
+  content: Array<{ type: string; text: string }>;
+  isError?: boolean;
+}> {
   // Validate schedule_value before creating task
   if (args.schedule_type === 'cron') {
     try {
       CronExpressionParser.parse(args.schedule_value);
     } catch {
       return {
-        content: [{ type: 'text', text: `Invalid cron: "${args.schedule_value}". Use format like "0 9 * * *" (daily 9am) or "*/5 * * * *" (every 5 min).` }],
+        content: [
+          {
+            type: 'text',
+            text: `Invalid cron: "${args.schedule_value}". Use format like "0 9 * * *" (daily 9am) or "*/5 * * * *" (every 5 min).`,
+          },
+        ],
         isError: true,
       };
     }
@@ -86,44 +97,74 @@ export async function toolScheduleTask(
     const ms = parseInt(args.schedule_value, 10);
     if (isNaN(ms) || ms <= 0) {
       return {
-        content: [{ type: 'text', text: `Invalid interval: "${args.schedule_value}". Must be positive milliseconds (e.g., "300000" for 5 min).` }],
+        content: [
+          {
+            type: 'text',
+            text: `Invalid interval: "${args.schedule_value}". Must be positive milliseconds (e.g., "300000" for 5 min).`,
+          },
+        ],
         isError: true,
       };
     }
   } else if (args.schedule_type === 'once') {
-    if (/[Zz]$/.test(args.schedule_value) || /[+-]\d{2}:\d{2}$/.test(args.schedule_value)) {
+    if (
+      /[Zz]$/.test(args.schedule_value) ||
+      /[+-]\d{2}:\d{2}$/.test(args.schedule_value)
+    ) {
       return {
-        content: [{ type: 'text', text: `Timestamp must be local time without timezone suffix. Got "${args.schedule_value}" — use format like "2026-02-01T15:30:00".` }],
+        content: [
+          {
+            type: 'text',
+            text: `Timestamp must be local time without timezone suffix. Got "${args.schedule_value}" — use format like "2026-02-01T15:30:00".`,
+          },
+        ],
         isError: true,
       };
     }
     const date = new Date(args.schedule_value);
     if (isNaN(date.getTime())) {
       return {
-        content: [{ type: 'text', text: `Invalid timestamp: "${args.schedule_value}". Use local time format like "2026-02-01T15:30:00".` }],
+        content: [
+          {
+            type: 'text',
+            text: `Invalid timestamp: "${args.schedule_value}". Use local time format like "2026-02-01T15:30:00".`,
+          },
+        ],
         isError: true,
       };
     }
   }
 
   // Non-main groups can only schedule for themselves
-  const targetJid = context.isMain && args.target_group_jid ? args.target_group_jid : context.chatJid;
+  const targetJid =
+    context.isMain && args.target_group_jid
+      ? args.target_group_jid
+      : context.chatJid;
 
   // For main targeting other groups, we need to find the group folder
   let targetFolder = context.groupFolder;
-  if (context.isMain && args.target_group_jid && args.target_group_jid !== context.chatJid) {
+  if (
+    context.isMain &&
+    args.target_group_jid &&
+    args.target_group_jid !== context.chatJid
+  ) {
     // Look up the target group's folder from registered groups
     // This would require access to registeredGroups - for now we'll
     // need to pass it in via context or look it up differently
     // For simplicity, we'll store the JID and let the scheduler resolve it
     const allTasks = getAllTasks();
-    const existingTask = allTasks.find(t => t.chat_jid === args.target_group_jid);
+    const existingTask = allTasks.find(
+      (t) => t.chat_jid === args.target_group_jid,
+    );
     if (existingTask) {
       targetFolder = existingTask.group_folder;
     } else {
       // Need to look up the group folder - this is a limitation
       // We'll need to pass this information differently
-      logger.warn({ targetJid: args.target_group_jid }, 'Cannot determine group folder for target JID');
+      logger.warn(
+        { targetJid: args.target_group_jid },
+        'Cannot determine group folder for target JID',
+      );
     }
   }
 
@@ -136,7 +177,9 @@ export async function toolScheduleTask(
   if (args.schedule_type === 'once') {
     nextRun = new Date(args.schedule_value).toISOString();
   } else if (args.schedule_type === 'interval') {
-    nextRun = new Date(now.getTime() + parseInt(args.schedule_value, 10)).toISOString();
+    nextRun = new Date(
+      now.getTime() + parseInt(args.schedule_value, 10),
+    ).toISOString();
   } else if (args.schedule_type === 'cron') {
     try {
       const interval = CronExpressionParser.parse(args.schedule_value);
@@ -161,7 +204,12 @@ export async function toolScheduleTask(
   });
 
   return {
-    content: [{ type: 'text', text: `Task ${taskId} scheduled: ${args.schedule_type} - ${args.schedule_value}` }],
+    content: [
+      {
+        type: 'text',
+        text: `Task ${taskId} scheduled: ${args.schedule_type} - ${args.schedule_value}`,
+      },
+    ],
   };
 }
 
@@ -187,7 +235,9 @@ export async function toolListTasks(
     )
     .join('\n');
 
-  return { content: [{ type: 'text', text: `Scheduled tasks:\n${formatted}` }] };
+  return {
+    content: [{ type: 'text', text: `Scheduled tasks:\n${formatted}` }],
+  };
 }
 
 /**
@@ -196,7 +246,10 @@ export async function toolListTasks(
 export async function toolPauseTask(
   task_id: string,
   context: ToolContext,
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+): Promise<{
+  content: Array<{ type: string; text: string }>;
+  isError?: boolean;
+}> {
   const task = getTaskById(task_id);
   if (!task) {
     return { content: [{ type: 'text', text: `Task ${task_id} not found.` }] };
@@ -205,7 +258,9 @@ export async function toolPauseTask(
   // Non-main groups can only pause their own tasks
   if (!context.isMain && task.group_folder !== context.groupFolder) {
     return {
-      content: [{ type: 'text', text: `You can only pause tasks for your own group.` }],
+      content: [
+        { type: 'text', text: `You can only pause tasks for your own group.` },
+      ],
       isError: true,
     };
   }
@@ -220,7 +275,10 @@ export async function toolPauseTask(
 export async function toolResumeTask(
   task_id: string,
   context: ToolContext,
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+): Promise<{
+  content: Array<{ type: string; text: string }>;
+  isError?: boolean;
+}> {
   const task = getTaskById(task_id);
   if (!task) {
     return { content: [{ type: 'text', text: `Task ${task_id} not found.` }] };
@@ -229,7 +287,9 @@ export async function toolResumeTask(
   // Non-main groups can only resume their own tasks
   if (!context.isMain && task.group_folder !== context.groupFolder) {
     return {
-      content: [{ type: 'text', text: `You can only resume tasks for your own group.` }],
+      content: [
+        { type: 'text', text: `You can only resume tasks for your own group.` },
+      ],
       isError: true,
     };
   }
@@ -244,7 +304,10 @@ export async function toolResumeTask(
 export async function toolCancelTask(
   task_id: string,
   context: ToolContext,
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+): Promise<{
+  content: Array<{ type: string; text: string }>;
+  isError?: boolean;
+}> {
   const task = getTaskById(task_id);
   if (!task) {
     return { content: [{ type: 'text', text: `Task ${task_id} not found.` }] };
@@ -253,7 +316,9 @@ export async function toolCancelTask(
   // Non-main groups can only cancel their own tasks
   if (!context.isMain && task.group_folder !== context.groupFolder) {
     return {
-      content: [{ type: 'text', text: `You can only cancel tasks for your own group.` }],
+      content: [
+        { type: 'text', text: `You can only cancel tasks for your own group.` },
+      ],
       isError: true,
     };
   }
@@ -274,44 +339,69 @@ export async function toolUpdateTask(
     schedule_value?: string;
   },
   context: ToolContext,
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+): Promise<{
+  content: Array<{ type: string; text: string }>;
+  isError?: boolean;
+}> {
   const task = getTaskById(args.task_id);
   if (!task) {
-    return { content: [{ type: 'text', text: `Task ${args.task_id} not found.` }] };
+    return {
+      content: [{ type: 'text', text: `Task ${args.task_id} not found.` }],
+    };
   }
 
   // Non-main groups can only update their own tasks
   if (!context.isMain && task.group_folder !== context.groupFolder) {
     return {
-      content: [{ type: 'text', text: `You can only update tasks for your own group.` }],
+      content: [
+        { type: 'text', text: `You can only update tasks for your own group.` },
+      ],
       isError: true,
     };
   }
 
   // Validate schedule_value if provided
   if (args.schedule_value) {
-    if (args.schedule_type === 'cron' || (!args.schedule_type && task.schedule_type === 'cron')) {
+    if (
+      args.schedule_type === 'cron' ||
+      (!args.schedule_type && task.schedule_type === 'cron')
+    ) {
       try {
         CronExpressionParser.parse(args.schedule_value);
       } catch {
         return {
-          content: [{ type: 'text', text: `Invalid cron: "${args.schedule_value}".` }],
+          content: [
+            { type: 'text', text: `Invalid cron: "${args.schedule_value}".` },
+          ],
           isError: true,
         };
       }
     }
-    if (args.schedule_type === 'interval' || (!args.schedule_type && task.schedule_type === 'interval')) {
+    if (
+      args.schedule_type === 'interval' ||
+      (!args.schedule_type && task.schedule_type === 'interval')
+    ) {
       const ms = parseInt(args.schedule_value, 10);
       if (isNaN(ms) || ms <= 0) {
         return {
-          content: [{ type: 'text', text: `Invalid interval: "${args.schedule_value}".` }],
+          content: [
+            {
+              type: 'text',
+              text: `Invalid interval: "${args.schedule_value}".`,
+            },
+          ],
           isError: true,
         };
       }
     }
   }
 
-  const updates: Partial<Pick<typeof task, 'prompt' | 'schedule_type' | 'schedule_value' | 'next_run'>> = {};
+  const updates: Partial<
+    Pick<
+      typeof task,
+      'prompt' | 'schedule_type' | 'schedule_value' | 'next_run'
+    >
+  > = {};
 
   if (args.prompt !== undefined) {
     updates.prompt = args.prompt;
@@ -330,7 +420,9 @@ export async function toolUpdateTask(
     if (scheduleType === 'once') {
       updates.next_run = new Date(scheduleValue).toISOString();
     } else if (scheduleType === 'interval') {
-      updates.next_run = new Date(now.getTime() + parseInt(scheduleValue, 10)).toISOString();
+      updates.next_run = new Date(
+        now.getTime() + parseInt(scheduleValue, 10),
+      ).toISOString();
     } else if (scheduleType === 'cron') {
       try {
         const interval = CronExpressionParser.parse(scheduleValue);
@@ -357,10 +449,15 @@ export async function toolRegisterGroup(
     trigger: string;
   },
   context: ToolContext,
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+): Promise<{
+  content: Array<{ type: string; text: string }>;
+  isError?: boolean;
+}> {
   if (!context.isMain) {
     return {
-      content: [{ type: 'text', text: 'Only the main group can register new groups.' }],
+      content: [
+        { type: 'text', text: 'Only the main group can register new groups.' },
+      ],
       isError: true,
     };
   }
@@ -373,10 +470,17 @@ export async function toolRegisterGroup(
   }
 
   // Validate the folder format (should be channel-prefixed)
-  const folderMatch = args.folder.match(/^(whatsapp|telegram|discord|slack|gmail|x|email)_.+$/);
+  const folderMatch = args.folder.match(
+    /^(whatsapp|telegram|discord|slack|gmail|x|email)_.+$/,
+  );
   if (!folderMatch) {
     return {
-      content: [{ type: 'text', text: `Invalid folder format "${args.folder}". Must be channel-prefixed: {channel}_{group-name} (e.g., "whatsapp_family-chat", "telegram_dev-team").` }],
+      content: [
+        {
+          type: 'text',
+          text: `Invalid folder format "${args.folder}". Must be channel-prefixed: {channel}_{group-name} (e.g., "whatsapp_family-chat", "telegram_dev-team").`,
+        },
+      ],
       isError: true,
     };
   }
@@ -391,6 +495,11 @@ export async function toolRegisterGroup(
 
   await context.registerGroup(args.jid, group);
   return {
-    content: [{ type: 'text', text: `Group "${args.name}" registered. It will start receiving messages immediately.` }],
+    content: [
+      {
+        type: 'text',
+        text: `Group "${args.name}" registered. It will start receiving messages immediately.`,
+      },
+    ],
   };
 }
