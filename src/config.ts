@@ -18,13 +18,7 @@ export const SCHEDULER_POLL_INTERVAL = 60000;
 const PROJECT_ROOT = process.cwd();
 const HOME_DIR = process.env.HOME || os.homedir();
 
-// Allowlist paths (kept for compatibility, but not used for container security)
-export const MOUNT_ALLOWLIST_PATH = path.join(
-  HOME_DIR,
-  '.config',
-  'nanoclaw',
-  'mount-allowlist.json',
-);
+// Allowlist path for sender authorization
 export const SENDER_ALLOWLIST_PATH = path.join(
   HOME_DIR,
   '.config',
@@ -44,9 +38,8 @@ export const AGENT_TIMEOUT = parseInt(
 export const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT || '1800000', 10); // 30min default
 export const IPC_POLL_INTERVAL = 1000;
 
-// Legacy compatibility - containers are no longer used, but kept for compatibility
-export const USE_CONTAINERS = false;
-export const MAX_CONCURRENT_CONTAINERS = 5;
+// Maximum concurrent agents
+export const MAX_CONCURRENT_AGENTS = 5;
 export const CREDENTIAL_PROXY_PORT = 3001;
 
 function escapeRegex(str: string): string {

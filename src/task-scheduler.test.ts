@@ -42,7 +42,6 @@ describe('task scheduler', () => {
       registeredGroups: () => ({}),
       getSessions: () => ({}),
       queue: { enqueueTask } as any,
-      onProcess: () => {},
       sendMessage: async () => {},
     });
 

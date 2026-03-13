@@ -3,10 +3,10 @@ import fs from 'fs';
 
 import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL, TIMEZONE } from './config.js';
 import {
-  ContainerOutput,
-  runContainerAgent,
+  AgentRunOutput,
+  runAgentForGroup,
   writeTasksSnapshot,
-} from './container-runner.js';
+} from './agent-manager.js';
 import {
   getAllTasks,
   getDueTasks,
@@ -74,12 +74,6 @@ export interface SchedulerDependencies {
   registeredGroups: () => Record<string, RegisteredGroup>;
   getSessions: () => Record<string, string>;
   queue: GroupQueue;
-  onProcess: (
-    groupJid: string,
-    proc: unknown,
-    containerName: string,
-    groupFolder: string,
-  ) => void;
   sendMessage: (jid: string, text: string) => Promise<void>;
 }
 
@@ -177,7 +171,7 @@ async function runTask(
 
   try {
     // Run the task using the in-process agent
-    const output = await runContainerAgent(
+    const output = await runAgentForGroup(
       group,
       {
         prompt: task.prompt,
@@ -188,10 +182,7 @@ async function runTask(
         isScheduledTask: true,
         assistantName: ASSISTANT_NAME,
       },
-      (_proc, _containerName) => {
-        // Process tracking is handled internally
-      },
-      async (streamedOutput: ContainerOutput) => {
+      async (streamedOutput: AgentRunOutput) => {
         if (streamedOutput.result) {
           result = streamedOutput.result;
           // Forward result to user (sendMessage handles formatting)

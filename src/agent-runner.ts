@@ -10,8 +10,11 @@ import {
   HookCallback,
   PreCompactHookInput,
 } from '@anthropic-ai/claude-agent-sdk';
-import { spawn, ChildProcess } from 'child_process';
 import { logger } from './logger.js';
+
+// Prevent "cannot launch inside another Claude Code session" error
+// when NanoClaw is started from within a Claude Code / Amp session.
+delete process.env.CLAUDECODE;
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { RegisteredGroup } from './types.js';
 
@@ -325,20 +328,11 @@ function waitForIpcMessage(ipcInputDir: string): Promise<string | null> {
 }
 
 /**
- * Get MCP server path for the agent
- */
-function getMcpServerPath(): string {
-  // The MCP server will be compiled to dist/mcp-server.js
-  return path.join(process.cwd(), 'dist', 'mcp-server.js');
-}
-
-/**
  * Run a single query with streaming results callback.
  */
 async function runQuery(
   prompt: string,
   sessionId: string | undefined,
-  mcpServerPath: string,
   agentInput: AgentInput,
   onOutput: (output: AgentOutput) => void,
   resumeAt?: string,
@@ -399,12 +393,20 @@ async function runQuery(
     globalClaudeMd = fs.readFileSync(globalClaudeMdPath, 'utf8');
   }
 
-  for await (const message of query({
+  // Build a clean env without CLAUDECODE to avoid nested-session rejection
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.CLAUDECODE;
+
+  const queryIterable = query({
     prompt: stream,
     options: {
       cwd: groupDir,
+      env: cleanEnv,
       resume: sessionId,
       resumeSessionAt: resumeAt,
+      stderr: (data: string) => {
+        logger.debug({ groupFolder: agentInput.groupFolder }, `Agent stderr: ${data.trim()}`);
+      },
       systemPrompt: globalClaudeMd
         ? {
             type: 'preset' as const,
@@ -431,22 +433,10 @@ async function runQuery(
         'ToolSearch',
         'Skill',
         'NotebookEdit',
-        'mcp__nanoclaw__*',
       ],
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       settingSources: ['project', 'user'],
-      mcpServers: {
-        nanoclaw: {
-          command: 'node',
-          args: [mcpServerPath],
-          env: {
-            NANOCLAW_CHAT_JID: agentInput.chatJid,
-            NANOCLAW_GROUP_FOLDER: agentInput.groupFolder,
-            NANOCLAW_IS_MAIN: agentInput.isMain ? '1' : '0',
-          },
-        },
-      },
       hooks: {
         PreCompact: [
           {
@@ -460,42 +450,56 @@ async function runQuery(
         ],
       },
     },
-  })) {
-    messageCount++;
-    const msgType =
-      message.type === 'system'
-        ? `system/${(message as { subtype?: string }).subtype}`
-        : message.type;
+  });
 
-    if (message.type === 'assistant' && 'uuid' in message) {
-      lastAssistantUuid = (message as { uuid: string }).uuid;
+  try {
+    for await (const message of queryIterable) {
+      messageCount++;
+
+      if (message.type === 'assistant' && 'uuid' in message) {
+        lastAssistantUuid = (message as { uuid: string }).uuid;
+      }
+
+      if (message.type === 'system' && message.subtype === 'init') {
+        newSessionId = message.session_id;
+        logger.debug(
+          { groupFolder: agentInput.groupFolder, sessionId: newSessionId },
+          'Session initialized',
+        );
+      }
+
+      if (message.type === 'result') {
+        resultCount++;
+        const textResult =
+          'result' in message ? (message as { result?: string }).result : null;
+        logger.debug(
+          {
+            groupFolder: agentInput.groupFolder,
+            resultCount,
+            resultLength: textResult?.length,
+          },
+          'Agent result',
+        );
+        onOutput({
+          status: 'success',
+          result: textResult || null,
+          newSessionId,
+        });
+      }
     }
-
-    if (message.type === 'system' && message.subtype === 'init') {
-      newSessionId = message.session_id;
-      logger.debug(
-        { groupFolder: agentInput.groupFolder, sessionId: newSessionId },
-        'Session initialized',
+  } catch (err) {
+    // The SDK throws "process exited with code 1" after yielding results
+    // when the Claude CLI process exits non-zero (e.g., stale session resume).
+    // If we already got results, treat this as success — the work was done.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (resultCount > 0) {
+      logger.warn(
+        { groupFolder: agentInput.groupFolder, resultCount, error: msg },
+        'Agent process exited non-zero after producing results, treating as success',
       );
-    }
-
-    if (message.type === 'result') {
-      resultCount++;
-      const textResult =
-        'result' in message ? (message as { result?: string }).result : null;
-      logger.debug(
-        {
-          groupFolder: agentInput.groupFolder,
-          resultCount,
-          resultLength: textResult?.length,
-        },
-        'Agent result',
-      );
-      onOutput({
-        status: 'success',
-        result: textResult || null,
-        newSessionId,
-      });
+    } else {
+      // No results were produced — this is a real failure, re-throw
+      throw err;
     }
   }
 
@@ -513,7 +517,6 @@ export async function runAgent(
 ): Promise<AgentOutput> {
   const startTime = Date.now();
 
-  const mcpServerPath = getMcpServerPath();
   const ipcInputDir = resolveGroupIpcPath(group.folder) + IPC_INPUT_DIR_SUFFIX;
   fs.mkdirSync(ipcInputDir, { recursive: true });
 
@@ -554,7 +557,6 @@ export async function runAgent(
       const queryResult = await runQuery(
         prompt,
         sessionId,
-        mcpServerPath,
         input,
         (output) => {
           onOutput(output).catch((err) => {
@@ -624,7 +626,14 @@ export async function runAgent(
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    logger.error({ groupFolder: group.folder, error: err }, 'Agent error');
+    const errorStack = err instanceof Error ? err.stack : undefined;
+    const errorDetails = err instanceof Error
+      ? { message: err.message, stack: err.stack, name: err.name, ...Object.fromEntries(Object.entries(err)) }
+      : { raw: String(err) };
+    logger.error(
+      { groupFolder: group.folder, errorDetails },
+      `Agent error: ${errorMessage}`,
+    );
 
     return {
       status: 'error',

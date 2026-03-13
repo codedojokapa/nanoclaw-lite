@@ -24,7 +24,7 @@ import {
   getTaskById,
 } from './db.js';
 import { logger } from './logger.js';
-import { AvailableGroup } from './container-runner.js';
+import { AvailableGroup } from './agent-manager.js';
 
 import { RegisteredGroup } from './types.js';
 

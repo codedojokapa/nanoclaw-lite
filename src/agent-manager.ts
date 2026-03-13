@@ -1,17 +1,17 @@
 /**
- * Agent Runner for NanoClaw
+ * Agent Manager for NanoClaw
  * Runs agents directly in the main process (no container isolation)
  */
 
 import fs from 'fs';
 import path from 'path';
 import { logger } from './logger.js';
-import { resolveGroupFolderPath } from './group-folder.js';
+import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { RegisteredGroup } from './types.js';
 import { runAgent, AgentInput, AgentOutput } from './agent-runner.js';
 import { GROUPS_DIR } from './config.js';
 
-export interface ContainerInput {
+export interface AgentRunInput {
   prompt: string;
   sessionId?: string;
   groupFolder: string;
@@ -21,17 +21,11 @@ export interface ContainerInput {
   assistantName?: string;
 }
 
-export interface ContainerOutput {
+export interface AgentRunOutput {
   status: 'success' | 'error';
   result: string | null;
   newSessionId?: string;
   error?: string;
-}
-
-export interface VolumeMount {
-  hostPath: string;
-  containerPath: string;
-  readonly: boolean;
 }
 
 function setupGroupFolders(group: RegisteredGroup, isMain: boolean): void {
@@ -62,24 +56,22 @@ function setupGroupFolders(group: RegisteredGroup, isMain: boolean): void {
 /**
  * Run an agent for a group directly in the main process.
  */
-export async function runContainerAgent(
+export async function runAgentForGroup(
   group: RegisteredGroup,
-  input: ContainerInput,
-  _onProcess: (proc: unknown, containerName: string) => void,
-  onOutput?: (output: ContainerOutput) => Promise<void>,
-): Promise<ContainerOutput> {
+  input: AgentRunInput,
+  onOutput?: (output: AgentRunOutput) => Promise<void>,
+): Promise<AgentRunOutput> {
   const startTime = Date.now();
 
   // Setup group folders
   setupGroupFolders(group, input.isMain);
 
-  // Create a fake container name for logging compatibility
-  const containerName = `nanoclaw-${group.folder.replace(/[^a-zA-Z0-9-]/g, '-')}-${Date.now()}`;
+  const agentId = `nanoclaw-${group.folder.replace(/[^a-zA-Z0-9-]/g, '-')}-${Date.now()}`;
 
   logger.info(
     {
       group: group.name,
-      containerName,
+      agentId,
       isMain: input.isMain,
     },
     'Starting agent (in-process)',
@@ -125,13 +117,15 @@ export async function runContainerAgent(
     const duration = Date.now() - startTime;
     const errorMessage = err instanceof Error ? err.message : String(err);
 
+    const errorStack = err instanceof Error ? err.stack : undefined;
     logger.error(
       {
         group: group.name,
-        error: err,
+        errorMessage,
+        errorStack,
         duration,
       },
-      'Agent error',
+      `Agent error: ${errorMessage}`,
     );
 
     // Write error log
@@ -145,6 +139,7 @@ export async function runContainerAgent(
         `Group: ${group.name}`,
         `Duration: ${duration}ms`,
         `Error: ${errorMessage}`,
+        `Stack: ${errorStack || 'N/A'}`,
       ].join('\n'),
     );
 
@@ -169,7 +164,6 @@ export function writeTasksSnapshot(
     next_run: string | null;
   }>,
 ): void {
-  const { resolveGroupIpcPath } = require('./group-folder.js');
   const groupIpcDir = resolveGroupIpcPath(groupFolder);
   fs.mkdirSync(groupIpcDir, { recursive: true });
 
@@ -194,7 +188,6 @@ export function writeGroupsSnapshot(
   groups: AvailableGroup[],
   registeredJids: Set<string>,
 ): void {
-  const { resolveGroupIpcPath } = require('./group-folder.js');
   const groupIpcDir = resolveGroupIpcPath(groupFolder);
   fs.mkdirSync(groupIpcDir, { recursive: true });
 
@@ -213,3 +206,8 @@ export function writeGroupsSnapshot(
     ),
   );
 }
+
+// Backward compatibility aliases - will be removed in future
+export type ContainerInput = AgentRunInput;
+export type ContainerOutput = AgentRunOutput;
+export const runContainerAgent = runAgentForGroup;
