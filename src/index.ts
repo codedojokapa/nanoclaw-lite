@@ -3,14 +3,11 @@ import path from 'path';
 
 import {
   ASSISTANT_NAME,
-  CREDENTIAL_PROXY_PORT,
   IDLE_TIMEOUT,
   POLL_INTERVAL,
   TIMEZONE,
   TRIGGER_PATTERN,
-  USE_CONTAINERS,
 } from './config.js';
-import { startCredentialProxy } from './credential-proxy.js';
 import './channels/index.js';
 import {
   getChannelFactory,
@@ -22,15 +19,6 @@ import {
   writeGroupsSnapshot,
   writeTasksSnapshot,
 } from './container-runner.js';
-import {
-  cleanupOrphans,
-  ensureContainerRuntimeRunning,
-  PROXY_BIND_HOST,
-} from './container-runtime.js';
-import {
-  runDirectAgent,
-  writeTasksSnapshot as writeDirectTasksSnapshot,
-} from './direct-agent.js';
 import {
   getAllChats,
   getAllRegisteredGroups,
@@ -194,16 +182,13 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     'Processing messages',
   );
 
-  // Track idle timer for closing stdin when agent is idle
+  // Track idle timer for closing when agent is idle
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   const resetIdleTimer = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-      logger.debug(
-        { group: group.name },
-        'Idle timeout, closing container stdin',
-      );
+      logger.debug({ group: group.name }, 'Idle timeout, closing agent stdin');
       queue.closeStdin(chatJid);
     }, IDLE_TIMEOUT);
   };
@@ -276,34 +261,28 @@ async function runAgent(
 
   // Update tasks snapshot for agent to read (filtered by group)
   const tasks = getAllTasks();
-  if (USE_CONTAINERS) {
-    writeTasksSnapshot(
-      group.folder,
-      isMain,
-      tasks.map((t) => ({
-        id: t.id,
-        groupFolder: t.group_folder,
-        prompt: t.prompt,
-        schedule_type: t.schedule_type,
-        schedule_value: t.schedule_value,
-        status: t.status,
-        next_run: t.next_run,
-      })),
-    );
-  } else {
-    writeDirectTasksSnapshot(group.folder, isMain);
-  }
+  writeTasksSnapshot(
+    group.folder,
+    isMain,
+    tasks.map((t) => ({
+      id: t.id,
+      groupFolder: t.group_folder,
+      prompt: t.prompt,
+      schedule_type: t.schedule_type,
+      schedule_value: t.schedule_value,
+      status: t.status,
+      next_run: t.next_run,
+    })),
+  );
 
   // Update available groups snapshot (main group only can see all groups)
   const availableGroups = getAvailableGroups();
-  if (USE_CONTAINERS) {
-    writeGroupsSnapshot(
-      group.folder,
-      isMain,
-      availableGroups,
-      new Set(Object.keys(registeredGroups)),
-    );
-  }
+  writeGroupsSnapshot(
+    group.folder,
+    isMain,
+    availableGroups,
+    new Set(Object.keys(registeredGroups)),
+  );
 
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput
@@ -317,53 +296,21 @@ async function runAgent(
     : undefined;
 
   try {
-    let output: ContainerOutput;
-
-    if (USE_CONTAINERS) {
-      // Container mode: spawn a container for the agent
-      output = await runContainerAgent(
-        group,
-        {
-          prompt,
-          sessionId,
-          groupFolder: group.folder,
-          chatJid,
-          isMain,
-          assistantName: ASSISTANT_NAME,
-        },
-        (proc, containerName) =>
-          queue.registerProcess(chatJid, proc, containerName, group.folder),
-        wrappedOnOutput,
-      );
-    } else {
-      // Direct mode: run the agent in the main process
-      output = await runDirectAgent(
-        group,
-        {
-          prompt,
-          sessionId,
-          groupFolder: group.folder,
-          chatJid,
-          isMain,
-          assistantName: ASSISTANT_NAME,
-          sendMessage: async (text, sender) => {
-            const channel = findChannel(channels, chatJid);
-            if (!channel) {
-              logger.warn(
-                { chatJid },
-                'No channel owns JID, cannot send message',
-              );
-              return;
-            }
-            await channel.sendMessage(chatJid, text);
-          },
-          registerGroup: isMain ? registerGroup : undefined,
-          availableGroups: isMain ? availableGroups : undefined,
-          registeredJids: new Set(Object.keys(registeredGroups)),
-        },
-        wrappedOnOutput,
-      );
-    }
+    const output = await runContainerAgent(
+      group,
+      {
+        prompt,
+        sessionId,
+        groupFolder: group.folder,
+        chatJid,
+        isMain,
+        assistantName: ASSISTANT_NAME,
+      },
+      (_proc, _containerName) => {
+        // Process tracking is handled by the queue
+      },
+      wrappedOnOutput,
+    );
 
     if (output.newSessionId) {
       sessions[group.folder] = output.newSessionId;
@@ -371,10 +318,7 @@ async function runAgent(
     }
 
     if (output.status === 'error') {
-      logger.error(
-        { group: group.name, error: output.error },
-        USE_CONTAINERS ? 'Container agent error' : 'Direct agent error',
-      );
+      logger.error({ group: group.name, error: output.error }, 'Agent error');
       return 'error';
     }
 
@@ -462,19 +406,19 @@ async function startMessageLoop(): Promise<void> {
           if (queue.sendMessage(chatJid, formatted)) {
             logger.debug(
               { chatJid, count: messagesToSend.length },
-              'Piped messages to active container',
+              'Piped messages to active agent',
             );
             lastAgentTimestamp[chatJid] =
               messagesToSend[messagesToSend.length - 1].timestamp;
             saveState();
-            // Show typing indicator while the container processes the piped message
+            // Show typing indicator while the agent processes the piped message
             channel
               .setTyping?.(chatJid, true)
               ?.catch((err) =>
                 logger.warn({ chatJid, err }, 'Failed to set typing indicator'),
               );
           } else {
-            // No active container — enqueue for a new one
+            // No active agent — enqueue for a new one
             queue.enqueueMessageCheck(chatJid);
           }
         }
@@ -504,31 +448,15 @@ function recoverPendingMessages(): void {
   }
 }
 
-function ensureContainerSystemRunning(): void {
-  if (USE_CONTAINERS) {
-    ensureContainerRuntimeRunning();
-    cleanupOrphans();
-  } else {
-    logger.info('Running in direct mode - no container runtime needed');
-  }
-}
-
 async function main(): Promise<void> {
-  ensureContainerSystemRunning();
+  logger.info('Running in-process agent mode (no container runtime)');
   initDatabase();
   logger.info('Database initialized');
   loadState();
 
-  // Start credential proxy (containers route API calls through this)
-  const proxyServer = await startCredentialProxy(
-    CREDENTIAL_PROXY_PORT,
-    PROXY_BIND_HOST,
-  );
-
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
-    proxyServer.close();
     await queue.shutdown(10000);
     for (const ch of channels) await ch.disconnect();
     process.exit(0);
@@ -593,8 +521,9 @@ async function main(): Promise<void> {
     registeredGroups: () => registeredGroups,
     getSessions: () => sessions,
     queue,
-    onProcess: (groupJid, proc, containerName, groupFolder) =>
-      queue.registerProcess(groupJid, proc, containerName, groupFolder),
+    onProcess: (_groupJid, _proc, _containerName, _groupFolder) => {
+      // Process tracking is handled internally now
+    },
     sendMessage: async (jid, rawText) => {
       const channel = findChannel(channels, jid);
       if (!channel) {
