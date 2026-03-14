@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  An AI assistant that runs agents securely in their own containers. Lightweight, built to be easily understood and completely customized for your needs.
+  A lightweight AI assistant that runs Claude directly in-process. No containers, no rebuilds, no 10GB disk waste. Just copy-paste skills and go.
 </p>
 
 <p align="center">
@@ -16,18 +16,34 @@ Using Claude Code, NanoClaw can dynamically rewrite its code to customize its fe
 
 **New:** First AI assistant to support [Agent Swarms](https://code.claude.com/docs/en/agent-teams). Spin up teams of agents that collaborate in your chat.
 
-## Why I Built NanoClaw
+## Why I Built NanoClaw Lite ?
 
-[OpenClaw](https://github.com/openclaw/openclaw) is an impressive project, but I wouldn't have been able to sleep if I had given complex software I didn't understand full access to my life. OpenClaw has nearly half a million lines of code, 53 config files, and 70+ dependencies. Its security is at the application level (allowlists, pairing codes) rather than true OS-level isolation. Everything runs in one Node process with shared memory.
+OpenClaw & NanoClaw are impressive, but I needed something lighter. 
+- Containers deploy as code on VPS rather than as image on container platform (ECS, or whatever)
+- Cheaper
+- Most AI assistants don't need that complexity.
+- Leverage `claude-sdk-phython` as agent layer
+- @Andrej Karpathy likes its simplicity, (credit: nanoclaw)
+- Runs directly in-process. 
+- No containers, no rebuilds, on each skill/mcp changes.
+  - TBH: this is the main point, gmail-mcp would taking low tier model to figure it out for 10mins. Unaccetabple.
+- No wasted disk space. Claim back 10GB disk images taken by nanoclaw
+- Seperate personal workspace data from claw agent. [#trade-off]
+  - claw do have convience in using Obsidian for example, but you can also add Notion api to make it send notes to the cloud.
+  - If you run from local, don't forget to tailscale, VPN.
 
-NanoClaw provides that same core functionality, but in a codebase small enough to understand: one process and a handful of files. Claude agents run in their own Linux containers with filesystem isolation, not merely behind permission checks.
+Skills are just copy-paste into the plugins folder. Test instantly via MCP. Deploy anywhere—your VPS, your laptop, a tiny cloud instance.
+
+Caveat: you still have to guard your secret and network.
+However, running away from laptop (unlike openclaw). Your personal data are seperated from Cloud attacks. 
 
 ## Quick Start
 
 ```bash
 gh repo fork qwibitai/nanoclaw --clone
 cd nanoclaw
-claude
+npm install
+npm run dev
 ```
 
 <details>
@@ -36,11 +52,12 @@ claude
 1. Fork [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw) on GitHub (click the Fork button)
 2. `git clone https://github.com/<your-username>/nanoclaw.git`
 3. `cd nanoclaw`
-4. `claude`
+4. `npm install`
+5. `npm run dev`
 
 </details>
 
-Then run `/setup`. Claude Code handles everything: dependencies, authentication, container setup and service configuration.
+Then run `/setup` in Claude Code to configure channels and integrations.
 
 > **Note:** Commands prefixed with `/` (like `/setup`, `/add-whatsapp`) are [Claude Code skills](https://code.claude.com/docs/en/skills). Type them inside the `claude` CLI prompt, not in your regular terminal. If you don't have Claude Code installed, get it at [claude.com/product/claude-code](https://claude.com/product/claude-code).
 
@@ -48,7 +65,7 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 
 **Small enough to understand.** One process, a few source files and no microservices. If you want to understand the full NanoClaw codebase, just ask Claude Code to walk you through it.
 
-**Secure by isolation.** Agents run in Linux containers (Apple Container on macOS, or Docker) and they can only see what's explicitly mounted. Bash access is safe because commands run inside the container, not on your host.
+**Lightweight by design.** No containers, no rebuilds, no 10GB disk waste. Runs directly in-process. Deploy anywhere—VPS, laptop, tiny cloud instance. Zero runtime tax.
 
 **Built for the individual user.** NanoClaw isn't a monolithic framework; it's software that fits each user's exact needs. Instead of becoming bloatware, NanoClaw is designed to be bespoke. You make your own fork and have Claude Code modify it to match your needs.
 
@@ -59,20 +76,20 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 - No monitoring dashboard; ask Claude what's happening.
 - No debugging tools; describe the problem and Claude fixes it.
 
-**Skills over features.** Instead of adding features (e.g. support for Telegram) to the codebase, contributors submit [claude code skills](https://code.claude.com/docs/en/skills) like `/add-telegram` that transform your fork. You end up with clean code that does exactly what you need.
+**Skills are plugins.** Add channels or features by copying skills into `.claude/skills/`. Test instantly via MCP. No rebuilds, no restarting.
 
 **Best harness, best model.** NanoClaw runs on the Claude Agent SDK, which means you're running Claude Code directly. Claude Code is highly capable and its coding and problem-solving capabilities allow it to modify and expand NanoClaw and tailor it to each user.
 
 ## What It Supports
 
 - **Multi-channel messaging** - Talk to your assistant from WhatsApp, Telegram, Discord, Slack, or Gmail. Add channels with skills like `/add-whatsapp` or `/add-telegram`. Run one or many at the same time.
-- **Isolated group context** - Each group has its own `CLAUDE.md` memory, isolated filesystem, and runs in its own container sandbox with only that filesystem mounted to it.
+- **Isolated group context** - Each group has its own `CLAUDE.md` memory and isolated filesystem.
 - **Main channel** - Your private channel (self-chat) for admin control; every group is completely isolated
 - **Scheduled tasks** - Recurring jobs that run Claude and can message you back
 - **Web access** - Search and fetch content from the Web
-- **Container isolation** - Agents are sandboxed in Apple Container (macOS) or Docker (macOS/Linux)
 - **Agent Swarms** - Spin up teams of specialized agents that collaborate on complex tasks. NanoClaw is the first personal AI assistant to support agent swarms.
 - **Optional integrations** - Add Gmail (`/add-gmail`) and more via skills
+- **MCP testing** - Test skills instantly via MCP without rebuilds
 
 ## Usage
 
@@ -124,18 +141,17 @@ Skills we'd like to see:
 
 ## Requirements
 
-- macOS or Linux
+- macOS, Linux, or Windows
 - Node.js 20+
 - [Claude Code](https://claude.ai/download)
-- [Apple Container](https://github.com/apple/container) (macOS) or [Docker](https://docker.com/products/docker-desktop) (macOS/Linux)
 
 ## Architecture
 
 ```
-Channels --> SQLite --> Polling loop --> Container (Claude Agent SDK) --> Response
+Channels --> SQLite --> Polling loop --> Claude Agent SDK (in-process) --> Response
 ```
 
-Single Node.js process. Channels are added via skills and self-register at startup — the orchestrator connects whichever ones have credentials present. Agents execute in isolated Linux containers with filesystem isolation. Only mounted directories are accessible. Per-group message queue with concurrency control. IPC via filesystem.
+Single Node.js process. Channels are added via skills and self-register at startup — the orchestrator connects whichever ones have credentials present. Claude Agent SDK runs directly in-process with group isolation. Per-group message queue with concurrency control. IPC via filesystem.
 
 For the full architecture details, see [docs/SPEC.md](docs/SPEC.md).
 
@@ -145,24 +161,20 @@ Key files:
 - `src/ipc.ts` - IPC watcher and task processing
 - `src/router.ts` - Message formatting and outbound routing
 - `src/group-queue.ts` - Per-group queue with global concurrency limit
-- `src/container-runner.ts` - Spawns streaming agent containers
+- `src/agent-runner.ts` - Runs Claude Agent SDK directly in-process
 - `src/task-scheduler.ts` - Runs scheduled tasks
 - `src/db.ts` - SQLite operations (messages, groups, sessions, state)
 - `groups/*/CLAUDE.md` - Per-group memory
 
 ## FAQ
 
-**Why Docker?**
+**Can I run this on Linux? Windows? macOS?**
 
-Docker provides cross-platform support (macOS, Linux and even Windows via WSL2) and a mature ecosystem. On macOS, you can optionally switch to Apple Container via `/convert-to-apple-container` for a lighter-weight native runtime.
-
-**Can I run this on Linux?**
-
-Yes. Docker is the default runtime and works on both macOS and Linux. Just run `/setup`.
+Yes. NanoClaw runs on all three platforms. It's a pure Node.js application with no container dependencies.
 
 **Is this secure?**
 
-Agents run in containers, not behind application-level permission checks. They can only access explicitly mounted directories. You should still review what you're running, but the codebase is small enough that you actually can. See [docs/SECURITY.md](docs/SECURITY.md) for the full security model.
+Agents run with filesystem isolation at the application level. Each group has its own isolated filesystem context. You should still review what you're running, but the codebase is small enough that you actually can. See [docs/SECURITY.md](docs/SECURITY.md) for the full security model.
 
 **Why no configuration files?**
 
@@ -170,7 +182,11 @@ We don't want configuration sprawl. Every user should customize NanoClaw so that
 
 **Can I use third-party or open-source models?**
 
-Yes. NanoClaw supports any Claude API-compatible model endpoint. Set these environment variables in your `.env` file:
+Yes. 
+
+NanoClawLite supports any Claude API-compatible model endpoint. Set these environment variables in your `.env` file:
+
+Hint: modify `.env.example` file.
 
 ```bash
 ANTHROPIC_BASE_URL=https://your-api-endpoint.com

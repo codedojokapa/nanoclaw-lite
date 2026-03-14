@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  NanoClaw —— 您的专属 Claude 助手，在容器中安全运行。它轻巧易懂，并能根据您的个人需求灵活定制。
+  NanoClaw —— 轻量级 AI 助手，直接在进程中运行 Claude。无需容器，无需重新构建，无 10GB 磁盘浪费。只需复制粘贴技能即可使用。
 </p>
 
 <p align="center">
@@ -18,19 +18,20 @@
 
 ## 我为什么创建这个项目
 
-[OpenClaw](https://github.com/openclaw/openclaw) 是一个令人印象深刻的项目，但我无法安心使用一个我不了解却能访问我个人隐私的软件。OpenClaw 有近 50 万行代码、53 个配置文件和 70+ 个依赖项。其安全性是应用级别的（通过白名单、配对码实现），而非操作系统级别的隔离。所有东西都在一个共享内存的 Node 进程中运行。
+[OpenClaw](https://github.com/openclaw/openclaw) 令人印象深刻，但我需要更轻量的方案。容器增加了开销——10GB 磁盘镜像、重新构建时间、VPS 运行时开销。大多数 AI 助手并不需要那么复杂。
 
-NanoClaw 用一个您能快速理解的代码库，为您提供了同样的核心功能。只有一个进程，少数几个文件。智能体（Agent）运行在具有文件系统隔离的真实 Linux 容器中，而不是依赖于权限检查。
+NanoClaw 直接在进程中运行 Claude。无需容器，无需重新构建，不浪费磁盘空间。技能只需复制粘贴到插件文件夹。通过 MCP 即时测试。可部署到任何地方——您的 VPS、笔记本电脑、小型云实例。
 
 ## 快速开始
 
 ```bash
 git clone https://github.com/qwibitai/nanoclaw.git
 cd nanoclaw
-claude
+npm install
+npm run dev
 ```
 
-然后运行 `/setup`。Claude Code 会处理一切：依赖安装、身份验证、容器设置、服务配置。
+然后在 Claude Code 中运行 `/setup` 来配置渠道和集成。
 
 > **注意：** 以 `/` 开头的命令（如 `/setup`、`/add-whatsapp`）是 [Claude Code 技能](https://code.claude.com/docs/en/skills)。请在 `claude` CLI 提示符中输入，而非在普通终端中。
 
@@ -38,7 +39,7 @@ claude
 
 **小巧易懂：** 单一进程，少量源文件。无微服务、无消息队列、无复杂抽象层。让 Claude Code 引导您轻松上手。
 
-**通过隔离保障安全:** 智能体运行在 Linux 容器（在 macOS 上是 Apple Container，或 Docker）中。它们只能看到被明确挂载的内容。即便通过 Bash 访问也十分安全，因为所有命令都在容器内执行，不会直接操作您的宿主机。
+**轻量级设计:** 无容器，无重新构建，无 10GB 磁盘浪费。直接在进程中运行。可部署到任何地方——VPS、笔记本电脑、小型云实例。零运行时开销。
 
 **为单一用户打造:** 这不是一个框架，是一个完全符合您个人需求的、可工作的软件。您可以 Fork 本项目，然后让 Claude Code 根据您的精确需求进行修改和适配。
 
@@ -46,20 +47,20 @@ claude
 
 **AI 原生:** 无安装向导（由 Claude Code 指导安装）。无需监控仪表盘，直接询问 Claude 即可了解系统状况。无调试工具（描述问题，Claude 会修复它）。
 
-**技能（Skills）优于功能（Features）:** 贡献者不应该向代码库添加新功能（例如支持 Telegram）。相反，他们应该贡献像 `/add-telegram` 这样的 [Claude Code 技能](https://code.claude.com/docs/en/skills)，这些技能可以改造您的 fork。最终，您得到的是只做您需要事情的整洁代码。
+**技能即插件:** 将渠道或功能添加到 `.claude/skills/`。通过 MCP 即时测试。无需重新构建，无需重启。
 
 **最好的工具套件，最好的模型:** 本项目运行在 Claude Agent SDK 之上，这意味着您直接运行的就是 Claude Code。Claude Code 高度强大，其编码和问题解决能力使其能够修改和扩展 NanoClaw，为每个用户量身定制。
 
 ## 功能支持
 
 - **多渠道消息** - 通过 WhatsApp、Telegram、Discord、Slack 或 Gmail 与您的助手对话。使用 `/add-whatsapp` 或 `/add-telegram` 等技能添加渠道，可同时运行一个或多个。
-- **隔离的群组上下文** - 每个群组都拥有独立的 `CLAUDE.md` 记忆和隔离的文件系统。它们在各自的容器沙箱中运行，且仅挂载所需的文件系统。
+- **隔离的群组上下文** - 每个群组都拥有独立的 `CLAUDE.md` 记忆和隔离的文件系统。
 - **主频道** - 您的私有频道（self-chat），用于管理控制；其他所有群组都完全隔离
 - **计划任务** - 运行 Claude 的周期性作业，并可以给您回发消息
 - **网络访问** - 搜索和抓取网页内容
-- **容器隔离** - 智能体在 Apple Container (macOS) 或 Docker (macOS/Linux) 的沙箱中运行
 - **智能体集群（Agent Swarms）** - 启动多个专业智能体团队，协作完成复杂任务（首个支持此功能的个人 AI 助手）
 - **可选集成** - 通过技能添加 Gmail (`/add-gmail`) 等更多功能
+- **MCP 测试** - 通过 MCP 即时测试技能，无需重新构建
 
 ## 使用方法
 
@@ -111,18 +112,17 @@ claude
 
 ## 系统要求
 
-- macOS 或 Linux
+- macOS、Linux 或 Windows
 - Node.js 20+
 - [Claude Code](https://claude.ai/download)
-- [Apple Container](https://github.com/apple/container) (macOS) 或 [Docker](https://docker.com/products/docker-desktop) (macOS/Linux)
 
 ## 架构
 
 ```
-渠道 --> SQLite --> 轮询循环 --> 容器 (Claude Agent SDK) --> 响应
+渠道 --> SQLite --> 轮询循环 --> Claude Agent SDK (进程内) --> 响应
 ```
 
-单一 Node.js 进程。渠道通过技能添加，启动时自注册 — 编排器连接具有凭据的渠道。智能体在具有文件系统隔离的 Linux 容器中执行。每个群组的消息队列带有并发控制。通过文件系统进行 IPC。
+单一 Node.js 进程。渠道通过技能添加，启动时自注册 — 编排器连接具有凭据的渠道。Claude Agent SDK 直接在进程中运行，具有群组隔离。每个群组的消息队列带有并发控制。通过文件系统进行 IPC。
 
 完整架构详情请见 [docs/SPEC.md](docs/SPEC.md)。
 
@@ -132,24 +132,20 @@ claude
 - `src/ipc.ts` - IPC 监听与任务处理
 - `src/router.ts` - 消息格式化与出站路由
 - `src/group-queue.ts` - 带全局并发限制的群组队列
-- `src/container-runner.ts` - 生成流式智能体容器
+- `src/agent-runner.ts` - 直接在进程中运行 Claude Agent SDK
 - `src/task-scheduler.ts` - 运行计划任务
 - `src/db.ts` - SQLite 操作（消息、群组、会话、状态）
 - `groups/*/CLAUDE.md` - 各群组的记忆
 
 ## FAQ
 
-**为什么是 Docker？**
+**我可以在 Linux 上运行吗？Windows 上呢？macOS 上呢？**
 
-Docker 提供跨平台支持（macOS 和 Linux）和成熟的生态系统。在 macOS 上，您可以选择通过运行 `/convert-to-apple-container` 切换到 Apple Container，以获得更轻量级的原生运行时体验。
-
-**我可以在 Linux 上运行吗？**
-
-可以。Docker 是默认的容器运行时，在 macOS 和 Linux 上都可以使用。只需运行 `/setup`。
+可以。NanoClaw 在这三个平台上都可以运行。它是一个纯 Node.js 应用程序，没有容器依赖。
 
 **这个项目安全吗？**
 
-智能体在容器中运行，而不是在应用级别的权限检查之后。它们只能访问被明确挂载的目录。您仍然应该审查您运行的代码，但这个代码库小到您真的可以做到。完整的安全模型请见 [docs/SECURITY.md](docs/SECURITY.md)。
+智能体在应用级别运行，具有文件系统隔离。每个群组都有自己的独立文件系统上下文。您仍然应该审查您运行的代码，但这个代码库小到您真的可以做到。完整的安全模型请见 [docs/SECURITY.md](docs/SECURITY.md)。
 
 **为什么没有配置文件？**
 
