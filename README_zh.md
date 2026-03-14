@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="assets/nanoclaw-logo.png" alt="NanoClaw" width="400">
+  <img src="assets/nanoclaw-lite.png" alt="NanoClaw" width="400">
 </p>
 
 <p align="center">
-  NanoClaw —— 轻量级 AI 助手，直接在进程中运行 Claude。无需容器，无需重新构建，无 10GB 磁盘浪费。只需复制粘贴技能即可使用。
+  NanoClaw Lite —— 轻量级 AI 助手，直接在进程中运行 Claude。无需容器，无需重新构建，无 10GB 磁盘浪费。只需复制粘贴技能即可使用。
 </p>
 
 <p align="center">
@@ -16,16 +16,31 @@
 
 **新功能：** 首个支持 [Agent Swarms（智能体集群）](https://code.claude.com/docs/en/agent-teams) 的 AI 助手。可轻松组建智能体团队，在您的聊天中高效协作。
 
-## 我为什么创建这个项目
+## 我为什么创建 NanoClaw Lite？
 
-[OpenClaw](https://github.com/openclaw/openclaw) 令人印象深刻，但我需要更轻量的方案。容器增加了开销——10GB 磁盘镜像、重新构建时间、VPS 运行时开销。大多数 AI 助手并不需要那么复杂。
+[OpenClaw](https://github.com/openclaw/openclaw) 和 NanoClaw 都令人印象深刻，但我需要更轻量的方案：
 
-NanoClaw 直接在进程中运行 Claude。无需容器，无需重新构建，不浪费磁盘空间。技能只需复制粘贴到插件文件夹。通过 MCP 即时测试。可部署到任何地方——您的 VPS、笔记本电脑、小型云实例。
+- **容器作为代码部署** - 在 VPS 上以代码形式部署，而非作为容器镜像（ECS 等）
+- **更便宜** - 成本更低
+- **减少复杂性** - 大多数 AI 助手并不需要那么复杂
+- **使用 `claude-sdk-phython` 作为智能体层**
+- **Andrej Karpathy 也喜欢它的简洁性**（致谢：nanoclaw）
+- **直接在进程中运行** - 无容器，无需在每次技能/MCP 变更时重新构建
+  - **说实话：** 这才是重点——gmail-mcp 会让低层级模型花 10 分钟去理解它，这不可接受
+- **不浪费磁盘空间** - 收回 nanoclaw 占用的 10GB 磁盘镜像
+- **将个人工作区数据与 claw 智能体分离** [#权衡]
+  - claw 确实在使用 Obsidian 方面很便利，但你也可以添加 Notion API 来将笔记发送到云端
+  - 如果在本地运行，别忘了使用 Tailscale、VPN
+
+技能只需复制粘贴到插件文件夹。通过 MCP 即时测试。可部署到任何地方——您的 VPS、笔记本电脑、小型云实例。
+
+**注意：** 你仍然需要保护好你的密钥和网络。
+不过，与在笔记本电脑上运行不同（不像 openclaw），你的个人数据与云端攻击隔离。
 
 ## 快速开始
 
 ```bash
-git clone https://github.com/qwibitai/nanoclaw.git
+git clone https://github.com/codedojokapa/nanoclaw-lite.git
 cd nanoclaw
 npm install
 npm run dev
@@ -153,7 +168,11 @@ npm run dev
 
 **我可以使用第三方或开源模型吗？**
 
-可以。NanoClaw 支持任何 API 兼容的模型端点。在 `.env` 文件中设置以下环境变量：
+可以。
+
+NanoClaw Lite 支持任何与 Claude API 兼容的模型端点。在 `.env` 文件中设置以下环境变量：
+
+**提示：** 修改 `.env.example` 文件。
 
 ```bash
 ANTHROPIC_BASE_URL=https://your-api-endpoint.com
