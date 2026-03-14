@@ -405,7 +405,10 @@ async function runQuery(
       resume: sessionId,
       resumeSessionAt: resumeAt,
       stderr: (data: string) => {
-        logger.debug({ groupFolder: agentInput.groupFolder }, `Agent stderr: ${data.trim()}`);
+        logger.debug(
+          { groupFolder: agentInput.groupFolder },
+          `Agent stderr: ${data.trim()}`,
+        );
       },
       systemPrompt: globalClaudeMd
         ? {
@@ -627,9 +630,15 @@ export async function runAgent(
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : undefined;
-    const errorDetails = err instanceof Error
-      ? { message: err.message, stack: err.stack, name: err.name, ...Object.fromEntries(Object.entries(err)) }
-      : { raw: String(err) };
+    const errorDetails =
+      err instanceof Error
+        ? {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            ...Object.fromEntries(Object.entries(err)),
+          }
+        : { raw: String(err) };
     logger.error(
       { groupFolder: group.folder, errorDetails },
       `Agent error: ${errorMessage}`,
