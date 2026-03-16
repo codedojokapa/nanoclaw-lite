@@ -46,8 +46,8 @@
 ## 快速开始
 
 ```bash
-git clone https://github.com/codedojokapa/nanoclaw-lite.git
-cd nanoclaw
+git clone http://github.com/codedojokapa/nanoclaw-lite.git
+cd nanoclaw-lite
 npm install
 npm run dev
 ```

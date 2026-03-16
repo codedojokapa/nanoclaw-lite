@@ -46,22 +46,11 @@ However, running away from laptop (unlike openclaw). Your personal data are sepe
 ## Quick Start
 
 ```bash
-gh repo fork qwibitai/nanoclaw --clone
-cd nanoclaw
+git clone http://github.com/codedojokapa/nanoclaw-lite.git
+cd nanoclaw-lite
 npm install
 npm run dev
 ```
-
-<details>
-<summary>Without GitHub CLI</summary>
-
-1. Fork [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw) on GitHub (click the Fork button)
-2. `git clone https://github.com/<your-username>/nanoclaw.git`
-3. `cd nanoclaw`
-4. `npm install`
-5. `npm run dev`
-
-</details>
 
 Then run `/setup` in Claude Code to configure channels and integrations.
 
