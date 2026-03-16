@@ -37,6 +37,12 @@ Skills are just copy-paste into the plugins folder. Test instantly via MCP. Depl
 Caveat: you still have to guard your secret and network.
 However, running away from laptop (unlike openclaw). Your personal data are seperated from Cloud attacks. 
 
+## Preview
+
+<p align="center"> 
+  <img src="assets/tg-sample.png" alt="Telegram Example" width="300">
+</p>
+
 ## Quick Start
 
 ```bash

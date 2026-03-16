@@ -37,6 +37,12 @@
 **注意：** 你仍然需要保护好你的密钥和网络。
 不过，与在笔记本电脑上运行不同（不像 openclaw），你的个人数据与云端攻击隔离。
 
+## 预览
+
+<p align="center"> 
+  <img src="assets/tg-sample.png" alt="Telegram Example" width="300">
+</p>
+
 ## 快速开始
 
 ```bash
